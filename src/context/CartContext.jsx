@@ -5,6 +5,7 @@ import { useAuth } from "./AuthContext";
 const CartContext = createContext(null);
 
 const GUEST_KEY = "mk_guest_cart";
+const WARRANTY_KEY = "mk_cart_warranties";
 
 function loadGuestCart() {
   try { return JSON.parse(localStorage.getItem(GUEST_KEY)) || []; }
@@ -15,10 +16,37 @@ function saveGuestCart(items) {
   localStorage.setItem(GUEST_KEY, JSON.stringify(items));
 }
 
+function loadWarrantyMap() {
+  try { return JSON.parse(localStorage.getItem(WARRANTY_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function saveWarrantyMap(map) {
+  localStorage.setItem(WARRANTY_KEY, JSON.stringify(map));
+}
+
+function priceToNumber(value) {
+  if (typeof value === "number") return value;
+  if (!value) return 0;
+  const n = parseFloat(String(value).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function CartProvider({ children }) {
   const { isLoggedIn } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [warrantyMap, setWarrantyMap] = useState(loadWarrantyMap);
+
+  const setWarrantyFor = useCallback((productId, warranty) => {
+    setWarrantyMap((prev) => {
+      const next = { ...prev };
+      if (warranty) next[productId] = warranty;
+      else delete next[productId];
+      saveWarrantyMap(next);
+      return next;
+    });
+  }, []);
 
   // Load cart whenever auth state changes
   useEffect(() => {
@@ -33,9 +61,15 @@ export function CartProvider({ children }) {
     }
   }, [isLoggedIn]);
 
-  const addToCart = useCallback(async (product, quantity = 1) => {
+  const addToCart = useCallback(async (product, quantity = 1, warranty) => {
     const productId = product._id || product.id;
     const isMongoId = typeof productId === "string" && /^[0-9a-f]{24}$/i.test(productId);
+
+    // Always reflect the user's current warranty selection in the cart.
+    // Pass undefined to leave the map untouched; pass null to explicitly clear.
+    if (warranty !== undefined) {
+      setWarrantyFor(productId, warranty);
+    }
 
     if (isLoggedIn && isMongoId) {
       setLoading(true);
@@ -70,7 +104,7 @@ export function CartProvider({ children }) {
       if (!isLoggedIn) saveGuestCart(next);
       return next;
     });
-  }, [isLoggedIn]);
+  }, [isLoggedIn, setWarrantyFor]);
 
   const updateQuantity = useCallback(async (productId, quantity) => {
     if (quantity < 1) return;
@@ -100,6 +134,7 @@ export function CartProvider({ children }) {
 
   const removeFromCart = useCallback(async (productId) => {
     const isMongoId = typeof productId === "string" && /^[0-9a-f]{24}$/i.test(productId);
+    setWarrantyFor(productId, null);
 
     if (isLoggedIn && isMongoId) {
       setLoading(true);
@@ -119,7 +154,7 @@ export function CartProvider({ children }) {
       if (!isLoggedIn) saveGuestCart(next);
       return next;
     });
-  }, [isLoggedIn]);
+  }, [isLoggedIn, setWarrantyFor]);
 
   const clearCart = useCallback(async () => {
     if (isLoggedIn) {
@@ -127,6 +162,8 @@ export function CartProvider({ children }) {
     } else {
       localStorage.removeItem(GUEST_KEY);
     }
+    saveWarrantyMap({});
+    setWarrantyMap({});
     setItems([]);
   }, [isLoggedIn]);
 
@@ -134,12 +171,21 @@ export function CartProvider({ children }) {
     return items.some((i) => (i.product?.id || i.product?._id) === productId);
   }, [items]);
 
-  const totalItems = items.reduce((s, i) => s + i.quantity, 0);
-  const totalAmount = items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0);
+  // Decorate each line with the saved warranty (if any) so consumers can show it.
+  const decoratedItems = items.map((i) => {
+    const pid = i.product?.id || i.product?._id;
+    return { ...i, warranty: warrantyMap[pid] || null };
+  });
+
+  const totalItems = decoratedItems.reduce((s, i) => s + i.quantity, 0);
+  const totalAmount = decoratedItems.reduce((s, i) => {
+    const w = i.warranty ? priceToNumber(i.warranty.price) : 0;
+    return s + ((i.price || 0) + w) * i.quantity;
+  }, 0);
 
   return (
     <CartContext.Provider value={{
-      items,
+      items: decoratedItems,
       loading,
       totalItems,
       totalAmount,
@@ -148,6 +194,7 @@ export function CartProvider({ children }) {
       removeFromCart,
       clearCart,
       isInCart,
+      setWarrantyFor,
     }}>
       {children}
     </CartContext.Provider>

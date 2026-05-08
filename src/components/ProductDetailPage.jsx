@@ -21,6 +21,14 @@ import {
 } from "lucide-react";
 import { sonyBraviaProduct, recentlyViewedProducts } from "../data/products";
 
+const parsePrice = (value) => {
+  if (typeof value === "number") return value;
+  if (!value) return 0;
+  const n = parseFloat(String(value).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+const formatPrice = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
+
 /* ── Star Rating ─────────────────────────────────────────────────── */
 function StarRating({ value, max = 5, size = 14 }) {
   return (
@@ -41,7 +49,7 @@ function StarRating({ value, max = 5, size = 14 }) {
 }
 
 /* ── Product Gallery ─────────────────────────────────────────────── */
-function ProductGallery({ product }) {
+function ProductGallery({ product, selectedWarranty }) {
   const navigate = useNavigate();
   const { isLoggedIn, toggleWishlist, isWishlisted } = useAuth();
   const { addToCart, isInCart, loading: cartLoading } = useCart();
@@ -54,7 +62,7 @@ function ProductGallery({ product }) {
 
   const handleAddToCart = async () => {
     try {
-      await addToCart(product);
+      await addToCart(product, 1, selectedWarranty || null);
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2000);
     } catch (err) {
@@ -201,9 +209,10 @@ function SmartSavings({ offers }) {
 }
 
 /* ── Warranty Cards ──────────────────────────────────────────────── */
-function WarrantyCards({ warranties }) {
-  const [selected, setSelected] = useState(null);
+function WarrantyCards({ warranties, selected, onSelect }) {
   if (!warranties || warranties.length === 0) return null;
+
+  const toggle = (i) => onSelect(selected === i ? null : i);
 
   return (
     <div className="pd-warranty">
@@ -212,26 +221,38 @@ function WarrantyCards({ warranties }) {
         <span className="pd-warranty__title">Extended warranty</span>
       </div>
       <div className="pd-warranty__grid">
-        {warranties.map((w, i) => (
-          <div
-            key={i}
-            className={`pd-warranty__card ${selected === i ? "pd-warranty__card--selected" : ""}`}
-            onClick={() => setSelected(selected === i ? null : i)}
-          >
-            <div className="pd-warranty__card-top">
-              <span className="pd-warranty__card-label">{w.label}</span>
-              {selected === i && (
-                <Check size={14} className="pd-warranty__card-check" />
-              )}
+        {warranties.map((w, i) => {
+          const isSelected = selected === i;
+          return (
+            <div
+              key={i}
+              className={`pd-warranty__card ${isSelected ? "pd-warranty__card--selected" : ""}`}
+              onClick={() => toggle(i)}
+            >
+              <div className="pd-warranty__card-top">
+                <span className="pd-warranty__card-label">{w.label}</span>
+                {isSelected && (
+                  <Check size={14} className="pd-warranty__card-check" />
+                )}
+              </div>
+              <p className="pd-warranty__card-title">{w.title}</p>
+              <p className="pd-warranty__card-sub">{w.subTitle}</p>
+              <div className="pd-warranty__card-footer">
+                <span className="pd-warranty__card-price">{w.price}</span>
+                <button
+                  type="button"
+                  className="pd-warranty__add-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(i);
+                  }}
+                >
+                  {isSelected ? "Remove" : "Add"}
+                </button>
+              </div>
             </div>
-            <p className="pd-warranty__card-title">{w.title}</p>
-            <p className="pd-warranty__card-sub">{w.subTitle}</p>
-            <div className="pd-warranty__card-footer">
-              <span className="pd-warranty__card-price">{w.price}</span>
-              <button className="pd-warranty__add-btn">Add</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -647,8 +668,15 @@ function mapApiProduct(p) {
 export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { isLoggedIn, user } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedWarranty, setSelectedWarranty] = useState(null);
+
+  // Reset warranty when product changes
+  useEffect(() => {
+    setSelectedWarranty(null);
+  }, [id]);
 
   useEffect(() => {
     if (!id) {
@@ -683,6 +711,27 @@ export default function ProductDetailPage() {
 
   const categoryName = product.category?.name || "";
 
+  const userAddress =
+    isLoggedIn && Array.isArray(user?.addresses) && user.addresses.length
+      ? user.addresses.find((a) => a.isDefault) || user.addresses[0]
+      : null;
+  const savedPincode =
+    typeof window !== "undefined" ? localStorage.getItem("mk_pincode") : "";
+  const deliveryLocation = userAddress
+    ? [userAddress.city, userAddress.pincode].filter(Boolean).join(" - ")
+    : savedPincode || product.deliveryLocation;
+
+  const warranty =
+    selectedWarranty != null && Array.isArray(product.warranties)
+      ? product.warranties[selectedWarranty]
+      : null;
+  const productPriceNum = parsePrice(product.price);
+  const warrantyPriceNum = warranty ? parsePrice(warranty.price) : 0;
+  const displayPrice =
+    warrantyPriceNum > 0
+      ? formatPrice(productPriceNum + warrantyPriceNum)
+      : product.price;
+
   return (
     <div className="pd-page">
       {/* Breadcrumb */}
@@ -714,7 +763,7 @@ export default function ProductDetailPage() {
       {/* Main product area */}
       <div className="pd-main container">
         {/* Left: Gallery */}
-        <ProductGallery product={product} />
+        <ProductGallery product={product} selectedWarranty={warranty} />
 
         {/* Right: Product info */}
         <div className="pd-info">
@@ -734,7 +783,7 @@ export default function ProductDetailPage() {
 
           {/* Price */}
           <div className="pd-info__price-block">
-            <span className="pd-info__price">{product.price}</span>
+            <span className="pd-info__price">{displayPrice}</span>
             {product.originalPrice && (
               <span className="pd-info__original">{product.originalPrice}</span>
             )}
@@ -742,7 +791,15 @@ export default function ProductDetailPage() {
               <span className="pd-info__discount">{product.discount}</span>
             )}
           </div>
-          <p className="pd-info__tax-note">Inclusive of all taxes</p>
+          <p className="pd-info__tax-note">
+            Inclusive of all taxes
+            {warranty && (
+              <>
+                {" "}· includes <strong>{warranty.label}</strong> warranty (+
+                {warranty.price})
+              </>
+            )}
+          </p>
 
           {/* Description */}
           {product.description && (
@@ -755,7 +812,7 @@ export default function ProductDetailPage() {
             <span>
               Delivery at:{" "}
               <strong className="pd-info__delivery-pin">
-                {product.deliveryLocation}
+                {deliveryLocation}
               </strong>
               <span className="pd-info__delivery-eta">
                 {" "}
@@ -768,7 +825,11 @@ export default function ProductDetailPage() {
           <SmartSavings offers={product.smartSavings} />
 
           {/* Extended Warranty */}
-          <WarrantyCards warranties={product.warranties} />
+          <WarrantyCards
+            warranties={product.warranties}
+            selected={selectedWarranty}
+            onSelect={setSelectedWarranty}
+          />
 
           {/* Key Features */}
           <KeyFeatures features={product.keyFeatures} />

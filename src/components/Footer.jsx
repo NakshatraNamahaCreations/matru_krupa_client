@@ -1,5 +1,14 @@
 import { footerLinks } from "../data/products";
 import { ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+const ROUTE_BY_ITEM = {
+  "Help & Support": "/help-support",
+  "Franchise Opportunity": "/franchise",
+  "Store Locator": "/find-in-stores",
+  Careers: "/careers",
+  "About Matru Kripa Enterprise": "/about",
+};
 
 const FacebookIcon = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -22,6 +31,13 @@ const LinkedInIcon = () => (
 );
 
 export default function Footer() {
+  const navigate = useNavigate();
+  const handleItemClick = (item) => (e) => {
+    const route = ROUTE_BY_ITEM[item];
+    if (!route) return;
+    e.preventDefault();
+    navigate(route);
+  };
   return (
     <footer className="footer">
       <div className="footer__inner container">
@@ -57,7 +73,11 @@ export default function Footer() {
           <ul className="footer__list">
             {footerLinks.siteInfo.map((item) => (
               <li key={item}>
-                <a href="#" className="footer__link">
+                <a
+                  href="#"
+                  className="footer__link"
+                  onClick={handleItemClick(item)}
+                >
                   {item}
                 </a>
               </li>
@@ -71,7 +91,11 @@ export default function Footer() {
           <ul className="footer__list">
             {footerLinks.legal.map((item) => (
               <li key={item}>
-                <a href="#" className="footer__link">
+                <a
+                  href="#"
+                  className="footer__link"
+                  onClick={handleItemClick(item)}
+                >
                   {item}
                 </a>
               </li>
@@ -85,7 +109,11 @@ export default function Footer() {
           <ul className="footer__list">
             {footerLinks.products.map((item) => (
               <li key={item}>
-                <a href="#" className="footer__link">
+                <a
+                  href="#"
+                  className="footer__link"
+                  onClick={handleItemClick(item)}
+                >
                   {item}
                 </a>
               </li>

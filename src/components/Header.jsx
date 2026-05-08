@@ -6,16 +6,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import { storeApi } from "../services/api";
 import LogoutConfirmModal from "./LogoutConfirmModal";
-
-const categories = [
-  "Televisions",
-  "Home Appliances",
-  "Kitchen Appliances",
-  "Audio & Vedio",
-  "Laptops & Tablets",
-  "Phones & Wearables",
-];
 
 export default function Header() {
   const navigate = useNavigate();
@@ -34,7 +26,28 @@ export default function Header() {
   });
   const [geoStatus, setGeoStatus] = useState("");
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [categories, setCategories] = useState([]);
   const pincodeInputRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    storeApi
+      .getCategories()
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : data?.categories || [];
+        const onlyTv = list.filter((c) =>
+          (c?.name || "").toLowerCase().includes("television"),
+        );
+        setCategories(onlyTv);
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const wishlistCount = user?.wishlist?.length || 0;
 
@@ -74,16 +87,24 @@ export default function Header() {
     setLocationOpen(true);
   };
 
+  const savePincode = (raw) => {
+    const clean = String(raw || "").replace(/\D/g, "").slice(0, 6);
+    if (clean.length !== 6) return null;
+    localStorage.setItem("mk_pincode", clean);
+    setSavedPincode(clean);
+    setPincode(clean);
+    return clean;
+  };
+
   const applyPincode = (e) => {
     e.preventDefault();
-    const clean = pincode.replace(/\D/g, "").slice(0, 6);
-    if (clean.length !== 6) {
+    const saved = savePincode(pincode);
+    if (!saved) {
       setGeoStatus("Please enter a valid 6-digit pincode.");
       return;
     }
-    localStorage.setItem("mk_pincode", clean);
-    setSavedPincode(clean);
-    setLocationOpen(false);
+    setGeoStatus(`Saved. Delivering to ${saved}.`);
+    setTimeout(() => setLocationOpen(false), 600);
   };
 
   const useCurrentLocation = () => {
@@ -93,18 +114,36 @@ export default function Header() {
     }
     setGeoStatus("Detecting your location…");
     navigator.geolocation.getCurrentPosition(
-      () => {
-        setGeoStatus("Location detected.");
-        setTimeout(() => setLocationOpen(false), 600);
+      async ({ coords }) => {
+        try {
+          setGeoStatus("Looking up your pincode…");
+          const url =
+            `https://nominatim.openstreetmap.org/reverse?format=json` +
+            `&lat=${coords.latitude}&lon=${coords.longitude}` +
+            `&zoom=18&addressdetails=1`;
+          const res = await fetch(url, { headers: { Accept: "application/json" } });
+          if (!res.ok) throw new Error("Lookup failed");
+          const data = await res.json();
+          const postcode = data?.address?.postcode || "";
+          const saved = savePincode(postcode);
+          if (!saved) {
+            setGeoStatus("Couldn't read pincode here. Please enter it manually.");
+            return;
+          }
+          setGeoStatus(`Location set to ${saved}.`);
+          setTimeout(() => setLocationOpen(false), 700);
+        } catch {
+          setGeoStatus("Couldn't look up your pincode. Please enter it manually.");
+        }
       },
       (err) => setGeoStatus(err.message || "Could not detect location."),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  const handleCategoryClick = (cat) => {
+  const handleCategoryClick = (name) => {
     setMenuOpen(false);
-    navigate(`/category/${encodeURIComponent(cat)}`);
+    navigate(`/category/${encodeURIComponent(name)}`);
   };
 
   const requestLogout = () => setLogoutOpen(true);
@@ -267,7 +306,11 @@ export default function Header() {
               <button type="submit" className="loc-modal__apply">Apply</button>
             </form>
 
-            <button className="loc-modal__current" onClick={useCurrentLocation}>
+            <button
+              type="button"
+              className="loc-modal__current"
+              onClick={useCurrentLocation}
+            >
               <Crosshair size={16} />
               Use my current location
             </button>
@@ -280,6 +323,7 @@ export default function Header() {
               To view your saved delivery address, sign in
             </p>
             <button
+              type="button"
               className="loc-modal__login"
               onClick={() => {
                 setLocationOpen(false);
@@ -307,16 +351,22 @@ export default function Header() {
             <div className="menu-drawer__section-title">Shop by Category</div>
             <div className="menu-drawer__divider" />
             <nav className="menu-drawer__nav">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  className="menu-drawer__item"
-                  onClick={() => handleCategoryClick(cat)}
-                >
-                  <span>{cat}</span>
-                  <ChevronRight size={18} className="menu-drawer__chevron" />
-                </button>
-              ))}
+              {categories.length === 0 ? (
+                <div className="menu-drawer__item" style={{ color: "#888" }}>
+                  No categories available
+                </div>
+              ) : (
+                categories.map((cat) => (
+                  <button
+                    key={cat._id || cat.name}
+                    className="menu-drawer__item"
+                    onClick={() => handleCategoryClick(cat.name)}
+                  >
+                    <span>{cat.name}</span>
+                    <ChevronRight size={18} className="menu-drawer__chevron" />
+                  </button>
+                ))
+              )}
             </nav>
 
             {isLoggedIn && (

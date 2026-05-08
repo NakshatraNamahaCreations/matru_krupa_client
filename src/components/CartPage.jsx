@@ -1,7 +1,14 @@
 import { useNavigate } from "react-router-dom";
-import { Trash2, Heart, Truck, ShieldCheck, Tag, ChevronRight, Plus, Minus } from "lucide-react";
+import { Trash2, Heart, Truck, ShieldCheck, Tag, ChevronRight, Plus, Minus, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+
+function priceToNumber(value) {
+  if (typeof value === "number") return value;
+  if (!value) return 0;
+  const n = parseFloat(String(value).replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
 
 function getItemDetails(item) {
   const product = item.product || item;
@@ -35,7 +42,7 @@ function getItemDetails(item) {
 export default function CartPage() {
   const navigate = useNavigate();
   const { isLoggedIn, user, toggleWishlist } = useAuth();
-  const { items, totalAmount, updateQuantity, removeFromCart, clearCart, loading } = useCart();
+  const { items, totalAmount, updateQuantity, removeFromCart, clearCart, loading, setWarrantyFor } = useCart();
 
   const deliveryCharge = totalAmount >= 500 ? 0 : 49;
 
@@ -64,9 +71,14 @@ export default function CartPage() {
   // Calculate totals for summary
   const summaryItems = items.map((item) => {
     const { unitPrice, originalPrice } = getItemDetails(item);
-    return { unitPrice, originalPrice, quantity: item.quantity };
+    const warrantyPrice = item.warranty ? priceToNumber(item.warranty.price) : 0;
+    return { unitPrice, originalPrice, quantity: item.quantity, warrantyPrice };
   });
   const subtotal = summaryItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const warrantyTotal = summaryItems.reduce(
+    (s, i) => s + i.warrantyPrice * i.quantity,
+    0,
+  );
   const totalMRP = summaryItems.reduce((s, i) => s + (i.originalPrice || i.unitPrice) * i.quantity, 0);
   const totalDiscount = totalMRP - subtotal;
 
@@ -144,6 +156,30 @@ export default function CartPage() {
                       </button>
                     </div>
 
+                    {item.warranty && (
+                      <div className="cart-item__warranty">
+                        <ShieldCheck size={14} className="cart-item__warranty-icon" />
+                        <span className="cart-item__warranty-text">
+                          Extended warranty
+                          {item.warranty.label ? ` · ${item.warranty.label}` : ""}
+                        </span>
+                        <span className="cart-item__warranty-price">
+                          + ₹
+                          {(
+                            priceToNumber(item.warranty.price) * item.quantity
+                          ).toLocaleString("en-IN")}
+                        </span>
+                        <button
+                          type="button"
+                          className="cart-item__warranty-remove"
+                          aria-label="Remove warranty"
+                          onClick={() => setWarrantyFor(productId, null)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+
                     <div className="cart-item__actions">
                       {isLoggedIn && (
                         <button
@@ -194,6 +230,12 @@ export default function CartPage() {
                   <span>Price ({items.length} {items.length === 1 ? "item" : "items"})</span>
                   <span>₹{subtotal.toLocaleString("en-IN")}</span>
                 </div>
+                {warrantyTotal > 0 && (
+                  <div className="cart-payment__row">
+                    <span>Warranty Add-ons</span>
+                    <span>₹{warrantyTotal.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
                 <div className="cart-payment__row">
                   <span>Delivery Charges</span>
                   <span>
@@ -205,7 +247,7 @@ export default function CartPage() {
                 </div>
                 <div className="cart-payment__row cart-payment__row--total">
                   <span>Total</span>
-                  <span>₹{(subtotal + deliveryCharge).toLocaleString("en-IN")}</span>
+                  <span>₹{(subtotal + warrantyTotal + deliveryCharge).toLocaleString("en-IN")}</span>
                 </div>
               </div>
               <button

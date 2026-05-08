@@ -19,6 +19,9 @@ import LoginPage from "./components/LoginPage";
 import CheckoutPage from "./components/CheckoutPage";
 import FindInStores from "./components/FindInStores";
 import FranchiseOpportunity from "./components/FranchiseOpportunity";
+import HelpSupport from "./components/Help&Support";
+import Careers from "./components/Careers";
+import AboutPage from "./components/AboutPage";
 import { hiddenDeals, whatsHot } from "./data/products";
 
 function HomePage() {
@@ -64,6 +67,9 @@ export default function App() {
           <Route path="/checkout" element={<PrivateRoute><CheckoutPage /></PrivateRoute>} />
           <Route path="/find-in-stores" element={<FindInStores />} />
           <Route path="/franchise" element={<FranchiseOpportunity />} />
+          <Route path="/help-support" element={<HelpSupport />} />
+          <Route path="/careers" element={<Careers />} />
+          <Route path="/about" element={<AboutPage />} />
         </Routes>
       </main>
       <Footer />
