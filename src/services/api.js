@@ -1,5 +1,5 @@
-// const BASE = "https://matru-krupa-server.vercel.app/api";
-const BASE = "http://localhost:5000/api";
+const BASE = "https://matru-krupa-server.vercel.app/api";
+//const BASE = "http://localhost:5000/api";
 
 function getToken() {
   return localStorage.getItem("mk_token");
